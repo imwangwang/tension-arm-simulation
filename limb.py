@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 
-from ga_class_1 import GenticAlgorithm
+from ga_class import GenticAlgorithm
 
 """
 Custom Classes
@@ -224,22 +224,6 @@ def init_model(lengths=None, limits=None):
     model.update({'lengths':lengths,'limits':limits, 'claw_state':0})
     return model
 
-"""
-Testing model movement
-"""
-def rand_move_model(model):
-    limits = model['limits']
-    angles = model['angles']
-    for i in range(len(angles)):
-        if angles[i] < limits['l'][i] :
-            angles[i] += randint(0,5)
-        elif angles[i] > limits['u'][i]:
-            angles[i] -= randint(0,5)
-        else:
-            angles[i] += randint(-5,5)
-    model['angles'] = angles
-    return model
-  
 
 """
 create specific path
@@ -293,31 +277,6 @@ def create_target_path(target=None):
 
 
 """
-Create a dataset using random angles
-"""
-def generate_random_angles(model):
-    limits = model['limits']
-    angles = model['angles']
-    for i in range(len(angles)):
-        angles[i] = randint(limits['l'][i],limits['u'][i])
-        
-    return angles
-
-def generate_dataset(size=None):
-    if size==None:
-        size = 5000
-    create_scene(400)
-    model = init_model()
-    model.update({'reach':vector(0,0,0)})
-    data = Dataset()
-    for i in range(size):
-        model['angles'] = generate_random_angles(model)
-        reach = update(model)
-        data.update_dataset(model,reach)
-    data.save_dataset()    
-    return
-
-"""
 visualization
 """
 
@@ -350,18 +309,25 @@ def analytic_soln(model,x,y):
     angle2 =  np.arctan2((y - l1*np.sin(angle1)),(x - l1*np.cos(angle1))) - angle1
     return list(np.degrees([angle1,angle2]))
 
-def tension_to_angles(tension):
-    R = np.array([[-2,0],[0,-1.5]])
+def tension_to_angles(tension,R):
     pred_angles = np.dot(R,np.array(tension))
     return list(pred_angles)
+
+def calc_S3(pred_angles):
+    value0, value1 = 3, 4
+    s3 = value0*pred_angles[0] + value1*pred_angles[1]
+    return [s3]
 
 def ga_sim(save_file='plot_data.csv'):
     create_scene(400)
     model = init_model()
     model.update({'reach':vector(0,0,0)})
     
+    R = np.array([[-2,0],[0,-1.5]])
     ga_model = GenticAlgorithm()
+    ga_model.set_R(R)
     tension = ga_model.constrained_individual()
+    
     target_gen = TargetGenerator(model,'circle')
     
     #Data to be saved and plotted
@@ -369,31 +335,32 @@ def ga_sim(save_file='plot_data.csv'):
     
     cols = ['Index','Target Position x','Target Position y','Pred Position x','Pred Position y']
     cols += ['Target Angle q1','Target Angle q2','Pred Angle q1','Pred Angle q2']
-    cols += ['Excursion s{}'.format(i) for i in range(1,3)] + ['Time']
+    cols += ['Excursion s{}'.format(i) for i in range(1,4)] + ['Time']
     data = Dataset(save_file,cols)
     
     i=0    
-    while(i < 360):
+    while(i < 1):
         target = target_gen.get_target()
         target_angles = analytic_soln(model,target.pos.x,target.pos.y)
         start_time = datetime.datetime.now()
         tension = ga_model.run(tension,target_angles)
         stop_time = datetime.datetime.now()
-        pred_angles = tension_to_angles(tension)
+        pred_angles = tension_to_angles(tension,R)
+        s3 = calc_S3(pred_angles)
         model['angles'] = [0] + pred_angles
         model['reach'] = update(model)
         
         time_diff = (stop_time - start_time).total_seconds()
         print('target {} prediction {}'.format(target_angles,pred_angles))
         
-#        error = np.linalg(mode)
+        error = mag(model['reach']-target.pos)
         
         new_data =[i]+[target.pos.x,target.pos.y]+[model['reach'].x,model['reach'].y]
         new_data += target_angles+pred_angles
-        new_data += tension+[time_diff]
+        new_data += tension+s3+[time_diff]
         data.update_dataset(new_data)
         i+=1
-        print('Iteration {} Time taken = {} '.format(i,time_diff))
+        print('Iteration {} Time taken = {} Error = {} '.format(i,time_diff,error))
     
     data.save_dataset()
 
@@ -454,12 +421,11 @@ def graphing(target_positions,pred_positions,target_angles,pred_angles,excursion
     fig.suptitle('Excursion Values')
     ax.set_xlabel('S1')
     ax.set_ylabel('S2')
-#    ax.set_zlabel('S3')
-    # s3 = 
+    ax.set_zlabel('S3')
     x = excursion[:,0]
     y = excursion[:,1]
-#    z = excursion[:,2]
-    ax.plot(x,y)
+    z = excursion[:,2]
+    ax.plot(x,y,z)
     
     fig = plt.figure(4)
     fig.suptitle('Time taken per iteration')
@@ -477,9 +443,9 @@ main function
 """
 def main():
 #    vis()
-#    generate_dataset(10000)
-#    ga_sim(save_file = 'plot_data3.csv')
+    ga_sim(save_file = 'plot_data4.csv')
     load_plot(filename = 'plot_data3.csv')
+    pass
     
 if __name__ == '__main__':
     main()

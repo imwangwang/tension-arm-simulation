@@ -13,12 +13,13 @@ from deap import base, creator
 class GenticAlgorithm(object):
     
     def __init__(self,param=None):
+        self.__NUM_INDIVIDUALS = 2
         self.__TOTAL_POP = 16
         self.__SIBLINGS_PER_COUPLE = 1 #total children = CHILD_PER_COUPLE*2
         self.__BEST = 2
         self.__TOLERANCE = 1
-        self.__LOW = [-100,-100]
-        self.__HIGH = [100,100]
+        self.__LOW = [-30,-100]
+        self.__HIGH = [0,0]
         self.__TOTAL_GENERATIONS = 5000
         self.__R = np.array([[-2,0],[0,-1.5]])
         
@@ -30,7 +31,7 @@ class GenticAlgorithm(object):
         self.__toolbox.register("attribute_0", random.randint, self.__LOW[0], self.__HIGH[0])
         self.__toolbox.register("attribute_1", random.randint, self.__LOW[1], self.__HIGH[1])
         self.__toolbox.register("individual", tools.initCycle, creator.Individual,
-                         (self.__toolbox.attribute_0,self.__toolbox.attribute_1,self.__toolbox.attribute_2), n=1)
+                         (self.__toolbox.attribute_0,self.__toolbox.attribute_1), n=1)
         self.__toolbox.register("population", tools.initRepeat, list, self.__toolbox.individual)
         self.__toolbox.register("mate", self.__mate)
         self.__toolbox.register("mutate",self.__mutate,k=3)
@@ -41,10 +42,15 @@ class GenticAlgorithm(object):
         
     def constrained_individual(self):
         individual = []
-        for i in range(2):
+        for i in range(self.__NUM_INDIVIDUALS):
             individual.append(random.randint(self.__LOW[i],self.__HIGH[i]))
         return individual
 
+    def set_R(self, R):
+        if(R.shape != (2,self.__NUM_INDIVIDUALS)):
+            print('Dimension needs to be (2,{})'.format(self.__NUM_INDIVIDUALS))
+            return
+        self.__R = R
 
     def __evaluate(self,individual,true_angles):
         pred_angles = np.dot(self.__R,np.array(individual))
