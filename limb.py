@@ -16,7 +16,7 @@ import pandas as pd
 import datetime
 from pandas.io.common import EmptyDataError 
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d import axes3d
 
 
 from ga_class import GenticAlgorithm
@@ -24,8 +24,15 @@ from ga_class import GenticAlgorithm
 """
 Custom Classes
 """
-    
+"""
+class " GUI "
+Notes: creates gui to control angles for limbs
+"""     
 class GUI(object):
+    """
+    function " __init__ "
+    Notes: uses model to intialize angles and limits and states
+    """ 
     def __init__(self,model):
         self.__angles = model['angles']
         self.__limits = model['limits']
@@ -33,13 +40,19 @@ class GUI(object):
         self.__b_id = []
         self.__claw = 0 #open
         self.__state = True #running
-    
+    """
+    function " s_callback "
+    Notes: callback function for sliders for angles
+    """     
     def s_callback(self,s):
         i = s.id
         u = self.__limits['u'][i]
         l = self.__limits['l'][i]
         self.__angles[i] = self.__s_id[i].value*(u-l) + l
-        
+    """
+    function " b_callback "
+    Notes: button callback function for clicking
+    """         
     def b_callback(self,b):
         if b.id == 0:
             if self.__state == True:
@@ -54,7 +67,10 @@ class GUI(object):
             else:
                 self.__b_id[1].text = '<b>Grab</b>'
                 self.__claw = 0
-            
+    """
+    function " build "
+    Notes: cerates the gui elements (sliders and button)
+    """             
     def build(self):
         self.__b_id.append(button(text='<b>Pause</b>',bind=self.b_callback, id=0))
         scene.append_to_caption('\t')
@@ -64,10 +80,16 @@ class GUI(object):
             caption = '\tJoint ' + str(i+1)
             self.__s_id.append( slider(length=250, bind = self.s_callback, id=i))
             scene.append_to_caption(caption + '\n\n')
-   
+    """
+    function " read_values "
+    Notes: get state of model angles and claw state
+    """    
     def read_values(self):
         return self.__angles, self.__claw
-
+    """
+    function " read_state "
+    Notes: get running state
+    """ 
     def read_state(self):
         return self.__state
     
@@ -309,6 +331,20 @@ def analytic_soln(model,x,y):
     angle2 =  np.arctan2((y - l1*np.sin(angle1)),(x - l1*np.cos(angle1))) - angle1
     return list(np.degrees([angle1,angle2]))
 
+class TensionModulator(object):
+    def __init__(self,R,iterations):
+        self.__R_angles = np.linspace(0,2*np.pi,iterations) 
+        self.__mul_factor = 0.1
+        self.__R0 = R[0,0]
+        self.__R1 = R[0,1]
+        self.__R2 = R[1,0]
+        self.__R3 = R[1,1]
+        
+    def modulate_R(self,R,i):
+        R[0,0] = self.__R0*(1 + (self.__mul_factor*np.sin(self.__R_angles[i])))
+        R[1,1] = self.__R3*(1 + (self.__mul_factor*np.cos(self.__R_angles[i])))
+        return R
+
 def tension_to_angles(tension,R):
     pred_angles = np.dot(R,np.array(tension))
     return list(pred_angles)
@@ -318,16 +354,19 @@ def calc_S3(pred_angles):
     s3 = value0*pred_angles[0] + value1*pred_angles[1]
     return [s3]
 
+    
 def ga_sim(save_file='plot_data.csv'):
     create_scene(400)
     model = init_model()
     model.update({'reach':vector(0,0,0)})
     
+    TOTAL_ITER = 360
     R = np.array([[-2,0],[0,-1.5]])
     ga_model = GenticAlgorithm()
     ga_model.set_R(R)
     tension = ga_model.constrained_individual()
     
+    ten_mod = TensionModulator(R,TOTAL_ITER)
     target_gen = TargetGenerator(model,'circle')
     
     #Data to be saved and plotted
@@ -336,36 +375,56 @@ def ga_sim(save_file='plot_data.csv'):
     cols = ['Index','Target Position x','Target Position y','Pred Position x','Pred Position y']
     cols += ['Target Angle q1','Target Angle q2','Pred Angle q1','Pred Angle q2']
     cols += ['Excursion s{}'.format(i) for i in range(1,4)] + ['Time']
+    cols += ['R_00','R_01','R_10','R_11']
     data = Dataset(save_file,cols)
     
     i=0    
-    while(i < 1):
+    while(i < TOTAL_ITER):
+        
+        R = ten_mod.modulate_R(R,i)
+        ga_model.set_R(R)
+#        print(R)
+        
         target = target_gen.get_target()
         target_angles = analytic_soln(model,target.pos.x,target.pos.y)
+        
         start_time = datetime.datetime.now()
         tension = ga_model.run(tension,target_angles)
         stop_time = datetime.datetime.now()
+        
         pred_angles = tension_to_angles(tension,R)
         s3 = calc_S3(pred_angles)
+        
         model['angles'] = [0] + pred_angles
         model['reach'] = update(model)
         
         time_diff = (stop_time - start_time).total_seconds()
-        print('target {} prediction {}'.format(target_angles,pred_angles))
-        
         error = mag(model['reach']-target.pos)
+#        print('target {} prediction {}'.format(target_angles,pred_angles))
+        print('Iteration {} Time taken = {} Error = {} '.format(i,time_diff,error))
         
         new_data =[i]+[target.pos.x,target.pos.y]+[model['reach'].x,model['reach'].y]
         new_data += target_angles+pred_angles
         new_data += tension+s3+[time_diff]
+        R_mod = R.ravel()
+        new_data += R_mod.tolist()
+        
         data.update_dataset(new_data)
         i+=1
-        print('Iteration {} Time taken = {} Error = {} '.format(i,time_diff,error))
+        
     
     data.save_dataset()
 
 
 def load_plot(filename = 'plot_data.csv'):
+    
+    target_positions = None
+    pred_positions = None
+    target_angles = None
+    pred_angles = None
+    excursion = None
+    time_taken = None
+    R_values = None
     
     dataset = pd.read_csv(filename)
     target_position_cols = [col for col in dataset.columns if 'Target Position' in col]
@@ -374,67 +433,95 @@ def load_plot(filename = 'plot_data.csv'):
     pred_angle_cols = [col for col in dataset.columns if 'Pred Angle' in col]
     excursion_cols = [col for col in dataset.columns if 'Excursion' in col]
     time_cols = [col for col in dataset.columns if 'Time' in col]
-    target_positions = dataset[target_position_cols].values
-    pred_positions = dataset[pred_position_cols].values
-    target_angles = dataset[target_angle_cols].values
-    pred_angles = dataset[pred_angle_cols].values
-    excursion = dataset[excursion_cols].values
-    time_taken = dataset[time_cols].values
+    R_cols = [col for col in dataset.columns if 'R_' in col]
+    
+    if target_position_cols:
+        target_positions = dataset[target_position_cols].values
+    if pred_position_cols:
+        pred_positions = dataset[pred_position_cols].values
+    if target_angle_cols:
+        target_angles = dataset[target_angle_cols].values
+    if pred_angle_cols:
+        pred_angles = dataset[pred_angle_cols].values
+    if excursion_cols:
+        excursion = dataset[excursion_cols].values
+    if time_cols:
+        time_taken = dataset[time_cols].values
+    if R_cols:
+        R_values = dataset[R_cols].values
+    
     print(dataset.describe())
-    graphing(target_positions,pred_positions,target_angles,pred_angles,excursion,time_taken)
+    graphing(target_positions,pred_positions,target_angles,pred_angles,
+             excursion,time_taken,R_values)
 
-def graphing(target_positions,pred_positions,target_angles,pred_angles,excursion,time_taken):
-    target_positions = np.array(target_positions)
-    pred_positions = np.array(pred_positions)
-    target_angles = np.array(target_angles)
-    pred_angles = np.array(pred_angles)
-    excursion = np.array(excursion)
-    time_taken = np.array(time_taken)
+def graphing(target_positions=None,pred_positions=None,target_angles=None,
+             pred_angles=None,excursion=None,time_taken=None,R_values=None):
     
     #Plotting graphs
-    fig = plt.figure(1)
-    fig.suptitle('Positions')
-    plt.xlabel('X-axis')
-    plt.ylabel('Y-axis')
-    x1 = target_positions[:,0]
-    y1 = target_positions[:,1]
-    x2 = pred_positions[:,0]
-    y2 = pred_positions[:,1]
-    plt.plot(x1,y1,label='Target positions')
-    plt.plot(x2,y2,label='Predition positions')
-    plt.legend()
+    if target_positions is not None and pred_positions is not None:
+        target_positions = np.array(target_positions)
+        pred_positions = np.array(pred_positions)
+        fig = plt.figure(1)
+        fig.suptitle('Positions')
+        plt.xlabel('X-axis')
+        plt.ylabel('Y-axis')
+        x1 = target_positions[:,0]
+        y1 = target_positions[:,1]
+        x2 = pred_positions[:,0]
+        y2 = pred_positions[:,1]
+        plt.plot(x1,y1,label='Target positions')
+        plt.plot(x2,y2,label='Predition positions')
+        plt.legend()
     
-    fig = plt.figure(2)
-    fig.suptitle('Joint Angles')
-    plt.xlabel('Angle 1 (q1)')
-    plt.ylabel('Angle 2 (q2)')
-    x1 = target_angles[:,0]
-    y1 = target_angles[:,1]
-    x2 = pred_angles[:,0]
-    y2 = pred_angles[:,1]
-    plt.plot(x1,y1,label='Target angles')
-    plt.plot(x2,y2,label='Predition angles')
-    plt.legend()
+    if target_angles is not None and pred_angles is not None:
+        target_angles = np.array(target_angles)
+        pred_angles = np.array(pred_angles)
+        fig = plt.figure(2)
+        fig.suptitle('Joint Angles')
+        plt.xlabel('Angle 1 (q1)')
+        plt.ylabel('Angle 2 (q2)')
+        x1 = target_angles[:,0]
+        y1 = target_angles[:,1]
+        x2 = pred_angles[:,0]
+        y2 = pred_angles[:,1]
+        plt.plot(x1,y1,label='Target angles')
+        plt.plot(x2,y2,label='Predition angles')
+        plt.legend()
     
-    fig = plt.figure(3)
-    ax = fig.gca(projection='3d')
-    fig.suptitle('Excursion Values')
-    ax.set_xlabel('S1')
-    ax.set_ylabel('S2')
-    ax.set_zlabel('S3')
-    x = excursion[:,0]
-    y = excursion[:,1]
-    z = excursion[:,2]
-    ax.plot(x,y,z)
+    if excursion is not None:
+        excursion = np.array(excursion)
+        fig = plt.figure(3)
+        ax = fig.gca(projection='3d')
+        fig.suptitle('Excursion Values')
+        ax.set_xlabel('S1')
+        ax.set_ylabel('S2')
+        ax.set_zlabel('S3')
+        x = excursion[:,0]
+        y = excursion[:,1]
+        z = excursion[:,2]
+        ax.plot(x,y,z)
     
-    fig = plt.figure(4)
-    fig.suptitle('Time taken per iteration')
-    plt.xlabel('Iteration')
-    plt.ylabel('Time taken')
-    x = [i for i in range(time_taken.shape[0])]
-    y = time_taken
-    plt.plot(x,y)
+    if time_taken is not None:
+        time_taken = np.array(time_taken)
+        fig = plt.figure(4)
+        fig.suptitle('Time taken per iteration')
+        plt.xlabel('Iteration')
+        plt.ylabel('Time taken')
+        x = [i for i in range(time_taken.shape[0])]
+        y = time_taken
+        plt.plot(x,y)
     
+    if R_values is not None:
+        R_values = np.array(R_values)
+        fig = plt.figure(5)
+        fig.suptitle('R values')
+        plt.xlabel('Iteration')
+        plt.ylabel('R')
+        x = [i for i in range(R_values.shape[0])]
+        for i in range(4):
+            y = R_values[:,i]
+            plt.plot(x,y,label='R_{}'.format(i))
+ 
     plt.show()
     
 
@@ -443,8 +530,8 @@ main function
 """
 def main():
 #    vis()
-    ga_sim(save_file = 'plot_data4.csv')
-    load_plot(filename = 'plot_data3.csv')
+    ga_sim(save_file = 'plot_data5.csv')
+    load_plot(filename = 'plot_data5.csv')
     pass
     
 if __name__ == '__main__':
