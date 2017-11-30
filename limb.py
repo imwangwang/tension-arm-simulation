@@ -302,18 +302,27 @@ def create_target_path(target=None):
 visualization
 """
 
-def vis(cam_enable=False):
+def vis(filename='plot_data.csv'):
     create_scene(400)
     model = init_model()
     model.update({'reach':vector(0,0,0)})
     gui = GUI(model)
     gui.build()
+    plot_data = load_plot(filename)
+    excursion=plot_data['excursion']
+    R_values=plot_data['R_values']
     
+    i = 0
     while(True):
         if(gui.read_state()):
-            
-            model['angles'], _= gui.read_values()
+            tension = [excursion[i,0], excursion[i,1]]
+            R = np.reshape(R_values[i],(2,2))
+            pred_angles = tension_to_angles(tension,R)
+        
+            model['angles'] = [0] + pred_angles
             model['reach'] = update(model)
+            i+= 1
+            i = i % 360
         rate(200)
     return
 
@@ -342,6 +351,8 @@ class TensionModulator(object):
         
     def modulate_R(self,R,i):
         R[0,0] = self.__R0*(1 + (self.__mul_factor*np.sin(self.__R_angles[i])))
+        R[0,1] = self.__R1*(1 + (self.__mul_factor*np.sin(self.__R_angles[i])))
+        R[1,0] = self.__R2*(1 + (self.__mul_factor*np.cos(self.__R_angles[i])))
         R[1,1] = self.__R3*(1 + (self.__mul_factor*np.cos(self.__R_angles[i])))
         return R
 
@@ -416,7 +427,7 @@ def ga_sim(save_file='plot_data.csv'):
     data.save_dataset()
 
 
-def load_plot(filename = 'plot_data.csv'):
+def load_plot(filename = 'plot_data.csv',stats=False):
     
     target_positions = None
     pred_positions = None
@@ -449,14 +460,23 @@ def load_plot(filename = 'plot_data.csv'):
         time_taken = dataset[time_cols].values
     if R_cols:
         R_values = dataset[R_cols].values
-    
-    print(dataset.describe())
-    graphing(target_positions,pred_positions,target_angles,pred_angles,
-             excursion,time_taken,R_values)
+    if stats == True:
+        print(dataset.describe())
+        
+    plot_data = {'target_positions':target_positions, 'pred_positions':pred_positions,
+                 'target_angles':target_angles,'pred_angles':pred_angles,
+                 'excursion':excursion,'time_taken':time_taken,'R_values':R_values}
+    return plot_data
 
-def graphing(target_positions=None,pred_positions=None,target_angles=None,
-             pred_angles=None,excursion=None,time_taken=None,R_values=None):
+def graphing(plot_data):
     
+    target_positions=plot_data['target_positions']
+    pred_positions=plot_data['pred_positions']
+    target_angles=plot_data['target_angles']
+    pred_angles=plot_data['pred_angles']
+    excursion=plot_data['excursion']
+    time_taken=plot_data['time_taken']
+    R_values=plot_data['R_values']
     #Plotting graphs
     if target_positions is not None and pred_positions is not None:
         target_positions = np.array(target_positions)
@@ -523,15 +543,15 @@ def graphing(target_positions=None,pred_positions=None,target_angles=None,
             plt.plot(x,y,label='R_{}'.format(i))
  
     plt.show()
-    
 
 """
 main function
 """
 def main():
-#    vis()
-    ga_sim(save_file = 'plot_data5.csv')
-    load_plot(filename = 'plot_data5.csv')
+#    ga_sim(save_file = 'plot_data5.csv')
+#    plot_data = load_plot(filename = 'plot_data5.csv')
+#    graphing(plot_data)
+    vis(filename = 'plot_data5.csv')
     pass
     
 if __name__ == '__main__':
