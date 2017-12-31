@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Sun Nov  5 22:57:41 2017
-
-@author: Rohit
+@author: Rohit Annigeri
 """
 
 import random
@@ -24,14 +23,23 @@ class GenticAlgorithm(object):
     number of children from each couple
     """
     def __init__(self,param=None):
+        # dimensionality of a single population member
         self.__NUM_INDIVIDUALS = 2
+        # population per generation allowed in the GA
         self.__TOTAL_POP = 16
-        self.__SIBLINGS_PER_COUPLE = 1 #total children = SIBLINGS_PER_COUPLE*2
+        #total children created per breeding = SIBLINGS_PER_COUPLE*2
+        self.__SIBLINGS_PER_COUPLE = 1 
+        # preserve BEST number of members per generation
         self.__BEST = 2
+        # error tolerance value
         self.__TOLERANCE = 1
+        # LOWER bound values
         self.__LOW = [-40,-100]
+        # Upper bound values
         self.__HIGH = [0,0]
+        # total number of generations allowed to find solution
         self.__TOTAL_GENERATIONS = 5000
+        #default R matrix
         self.__R = np.array([[-2,0],[0,-1.5]])
         
         creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
@@ -172,11 +180,13 @@ class GenticAlgorithm(object):
             n_gen += 1
             offspring = self.__toolbox.select(pop,k=self.__BEST)
             offspring = list(map(self.__toolbox.clone,offspring))
-            
+            #breeding of top BEST members
             offspring = self.__toolbox.mate(offspring)
+            #add random mutated top BEST members
             offspring = self.__toolbox.mutate(offspring,k=self.__BEST)
+            # add outside (random) members
             offspring = self.__toolbox.add_new_ind(offspring)
-            
+            #update fitness values for new members
             for ind in offspring:
                 if ind.fitness.valid == False:
                     ind.fitness.values = self.__toolbox.evaluate(ind,true_angles)
@@ -185,7 +195,7 @@ class GenticAlgorithm(object):
             fits = [ind.fitness.values[0] for ind in pop]
             mean_error.append(np.mean(fits))
             std.append(np.std(fits))
-            
+            #test best candidate for early exit
             top_candidate = self.__toolbox.select(pop,k=1)[0]
             min_fit = top_candidate.fitness.values[0]
             min_error.append(min_fit)

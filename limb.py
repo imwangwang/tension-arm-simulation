@@ -2,12 +2,8 @@
 """
 Created on Sat Oct 14 18:15:01 2017
 
-@author: Rohit
-"""
-
-# -*- coding: utf-8 -*-
-"""
-@author: Rohit
+@author: Rohit Annigeri
+Tension model simulation via Gentic Algorithm
 """
 from random import randint
 from vpython import *
@@ -123,7 +119,8 @@ class Arm_segment(object):
         return new_pos, axis
 
 """
-Dataset creation
+Class "Dataset"
+Dataset creation for saving any custom data into a csv file.
 """
 class Dataset(object):
     
@@ -152,7 +149,6 @@ class Dataset(object):
 Setup vpython scene, camera position
 create axes and colors
 """
-
 def create_scene(height=None):
     if height==None:
         scene.height = 600
@@ -248,8 +244,9 @@ def init_model(lengths=None, limits=None):
 
 
 """
-create specific path
-Generates random target location using lengths of arm segment
+Class "TargetGenerator"
+creates a target visiualization following a specified path
+updates position based on current iteration value
 """
 class TargetGenerator(object):
     def __init__(self,model,path='circle'):
@@ -261,6 +258,8 @@ class TargetGenerator(object):
         self.__curr_iter = 0
     
     def __move_target(self):
+        # radius of circular path
+        # center of the circle
         r = 2
         cx, cy = 0, 9
         angle = np.radians(self.__curr_iter)
@@ -286,22 +285,12 @@ class TargetGenerator(object):
             self.__random_target()
         self.__target.visible = True
         return self.__target
-        
-def create_target_path(target=None):
-    pos = vector(0,0,0)
-    
-    if(target==None):
-        target = sphere(pos=pos,radius=0.75,color=color.red)
-    else:
-        target.pos=pos
-        
-    return target
-
 
 """
-visualization
+Function "vis"
+Note: visualization of model in motion using the tension values loaded from
+a previously saved data file.
 """
-
 def vis(filename='plot_data.csv'):
     create_scene(400)
     model = init_model()
@@ -326,11 +315,10 @@ def vis(filename='plot_data.csv'):
         rate(200)
     return
 
+
 """
-Tension model simulation via Gentic Algorithm
-"""
-"""
-http://robotics.usc.edu/~aatrash/cs545/CS545_Lecture_9.pdf
+function "analytic_soln"
+Notes: Analytic solution to find true angles for limb position
 """
 def analytic_soln(model,x,y):
     l0,l1,l2 = model['lengths']
@@ -339,7 +327,12 @@ def analytic_soln(model,x,y):
     angle1 = np.arctan2(y,x) - np.arccos(((l*l) + (l1*l1) - (l2*l2))/(2*l1*l))
     angle2 =  np.arctan2((y - l1*np.sin(angle1)),(x - l1*np.cos(angle1))) - angle1
     return list(np.degrees([angle1,angle2]))
-
+"""
+class "TensionModulator"
+Notes: Induces variablility  to R values in the matrix as a function of current
+iteration cycle. Currently adds a factor of the current value in a sinusoidal
+fashion
+""" 
 class TensionModulator(object):
     def __init__(self,R,iterations):
         self.__R_angles = np.linspace(0,2*np.pi,iterations) 
@@ -348,6 +341,8 @@ class TensionModulator(object):
         self.__R1 = R[0,1]
         self.__R2 = R[1,0]
         self.__R3 = R[1,1]
+        self.__R4 = 3
+        self.__R5 = 4
         
     def modulate_R(self,R,i):
         R[0,0] = self.__R0*(1 + (self.__mul_factor*np.sin(self.__R_angles[i])))
@@ -355,28 +350,52 @@ class TensionModulator(object):
         R[1,0] = self.__R2*(1 + (self.__mul_factor*np.cos(self.__R_angles[i])))
         R[1,1] = self.__R3*(1 + (self.__mul_factor*np.cos(self.__R_angles[i])))
         return R
-
+    
+    """
+    Currently unused but useful for s3 based coffeicent
+    variation
+    """
+    def mod_s3_R(self, R4, R5, i):
+        R4 = self.__R4*(1 + (self.__mul_factor*np.sin(self.__R_angles[i])))
+        R5 = self.__R5*(1 + (self.__mul_factor*np.sin(self.__R_angles[i])))
+        return R4, R5
+"""
+function "tension_to_angles"
+Notes: converts excursion/tension to angles for limb using R matrix
+"""  
 def tension_to_angles(tension,R):
     pred_angles = np.dot(R,np.array(tension))
     return list(pred_angles)
-
-def calc_S3(pred_angles):
+"""
+function "calc_S3"
+Notes: uses pred angles to calculate excursion value in 3rd dimension
+"""  
+def calc_S3(pred_angles,ten_mod=None,i=None):
+    #The last column of the complete R(2x3 matrix)
+    #Fixed value of 3 and 4 to determine excurions value in 3rd dimension 
     value0, value1 = 3, 4
+#    value0, value1 = ten_mod.mod_s3_R(value0,value1,i)
     s3 = value0*pred_angles[0] + value1*pred_angles[1]
     return [s3]
 
-    
+"""
+function "ga_sim"
+Notes: runs the genetic algorithm with limb simulation in realtime
+"""     
 def ga_sim(save_file='plot_data.csv'):
+    #intitalizing the visiualization
     create_scene(400)
     model = init_model()
     model.update({'reach':vector(0,0,0)})
-    
+    #set total iterations for limb motion
+    #set R matrix and intitalize into GA
     TOTAL_ITER = 360
     R = np.array([[-2,0],[0,-1.5]])
     ga_model = GenticAlgorithm()
     ga_model.set_R(R)
     tension = ga_model.constrained_individual()
-    
+    #Modulate R matrix based on total iterations(i.e in time)
+    #Create a target to follow circular path
     ten_mod = TensionModulator(R,TOTAL_ITER)
     target_gen = TargetGenerator(model,'circle')
     
@@ -394,7 +413,6 @@ def ga_sim(save_file='plot_data.csv'):
         
         R = ten_mod.modulate_R(R,i)
         ga_model.set_R(R)
-#        print(R)
         
         target = target_gen.get_target()
         target_angles = analytic_soln(model,target.pos.x,target.pos.y)
@@ -411,7 +429,7 @@ def ga_sim(save_file='plot_data.csv'):
         
         time_diff = (stop_time - start_time).total_seconds()
         error = mag(model['reach']-target.pos)
-#        print('target {} prediction {}'.format(target_angles,pred_angles))
+        print('target {} prediction {}'.format(target_angles,pred_angles))
         print('Iteration {} Time taken = {} Error = {} '.format(i,time_diff,error))
         
         new_data =[i]+[target.pos.x,target.pos.y]+[model['reach'].x,model['reach'].y]
@@ -426,7 +444,11 @@ def ga_sim(save_file='plot_data.csv'):
     
     data.save_dataset()
 
-
+"""
+function "load_plot"
+Notes: saves plotting data into filename and if stats is enabled
+then prints plot data statistics
+""" 
 def load_plot(filename = 'plot_data.csv',stats=False):
     
     target_positions = None
@@ -468,6 +490,11 @@ def load_plot(filename = 'plot_data.csv',stats=False):
                  'excursion':excursion,'time_taken':time_taken,'R_values':R_values}
     return plot_data
 
+"""
+function "graphing"
+Notes: generates graphs of true and predicted positions,
+angles, excursion values and excursion matrix values in time.
+""" 
 def graphing(plot_data):
     
     target_positions=plot_data['target_positions']
@@ -492,7 +519,7 @@ def graphing(plot_data):
         plt.plot(x1,y1,label='Target positions')
         plt.plot(x2,y2,label='Predition positions')
         plt.legend()
-    
+    #target and predicted angles for limb plotting
     if target_angles is not None and pred_angles is not None:
         target_angles = np.array(target_angles)
         pred_angles = np.array(pred_angles)
@@ -507,7 +534,7 @@ def graphing(plot_data):
         plt.plot(x1,y1,label='Target angles')
         plt.plot(x2,y2,label='Predition angles')
         plt.legend()
-    
+    #excursion values plottting
     if excursion is not None:
         excursion = np.array(excursion)
         fig = plt.figure(3)
@@ -520,7 +547,7 @@ def graphing(plot_data):
         y = excursion[:,1]
         z = excursion[:,2]
         ax.plot(x,y,z)
-    
+    #Time taken per iteration plotting
     if time_taken is not None:
         time_taken = np.array(time_taken)
         fig = plt.figure(4)
@@ -530,7 +557,7 @@ def graphing(plot_data):
         x = [i for i in range(time_taken.shape[0])]
         y = time_taken
         plt.plot(x,y)
-    
+    #R values plotting
     if R_values is not None:
         R_values = np.array(R_values)
         fig = plt.figure(5)
@@ -546,9 +573,11 @@ def graphing(plot_data):
 
 """
 main function
+comment rest and use one function at a time. 
+or use all depending on use case
 """
 def main():
-#    ga_sim(save_file = 'plot_data5.csv')
+#    ga_sim(save_file = 'plot_data6.csv')
 #    plot_data = load_plot(filename = 'plot_data5.csv')
 #    graphing(plot_data)
     vis(filename = 'plot_data5.csv')
