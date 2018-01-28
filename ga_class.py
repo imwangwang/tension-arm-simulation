@@ -26,13 +26,13 @@ class GenticAlgorithm(object):
         # dimensionality of a single population member
         self.__NUM_INDIVIDUALS = 2
         # population per generation allowed in the GA
-        self.__TOTAL_POP = 16
+        self.__TOTAL_POP = 32
         #total children created per breeding = SIBLINGS_PER_COUPLE*2
         self.__SIBLINGS_PER_COUPLE = 1 
         # preserve BEST number of members per generation
-        self.__BEST = 2
+        self.__BEST = 6
         # error tolerance value
-        self.__TOLERANCE = 1
+        self.__TOLERANCE = self.__fit_scaling(0.5)[0]
         # LOWER bound values
         self.__LOW = [-40,-100]
         # Upper bound values
@@ -41,6 +41,10 @@ class GenticAlgorithm(object):
         self.__TOTAL_GENERATIONS = 5000
         #default R matrix
         self.__R = np.array([[-2,0],[0,-1.5]])
+        
+        self.__mean_error = []
+        self.__min_error = []
+        self.__seed_pop = []
         
         creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
         creator.create("Individual", list, fitness=creator.FitnessMin)
@@ -83,7 +87,7 @@ class GenticAlgorithm(object):
     def __evaluate(self,individual,true_angles):
         pred_angles = np.dot(self.__R,np.array(individual))
         loss = np.linalg.norm(true_angles-pred_angles)
-        return loss,0
+        return loss
     """
     function " __scaling "
     Notes: scale the individuals within range of 0-255, to perform efficient 
@@ -118,6 +122,23 @@ class GenticAlgorithm(object):
         self.__scaling(sibling2,direction='restore')
         
         return sibling1, sibling2
+        """
+    function " __bit_crossover "
+    Notes: bitwise crossover of two scaled individuals
+    """       
+    def __averaging(self,ind1,ind2):
+        sibling1 = self.__toolbox.clone(ind1)
+        sibling2 = self.__toolbox.clone(ind2)
+        
+        self.__scaling(sibling1,direction='shrink')
+        self.__scaling(sibling2,direction='shrink')
+        
+        for i in range(len(ind1)):
+            sibling1[i] = (sibling1[i] + sibling2[i])/2
+        self.__scaling(sibling1,direction='restore')
+        self.__scaling(sibling2,direction='restore')
+        
+        return sibling1
     """
     function " __mate "
     Notes: bitwise crossover for selected set of individuals
@@ -125,11 +146,13 @@ class GenticAlgorithm(object):
     """         
     def __mate(self,population):
         children = []
-        for ind1, ind2 in zip(population[::2],population[1::2]):
+        for ind1, ind2 in zip(population[::1],population[1::1]):
             for i in range(self.__SIBLINGS_PER_COUPLE):
                 child1, child2 = self.__bit_crossover(ind1, ind2)    
                 children.append(child1)
                 children.append(child2)
+#            child = self.__averaging(ind1,ind2)
+#            children.append(child)
         for child in children:
             del child.fitness.values
         return population + children
@@ -156,25 +179,43 @@ class GenticAlgorithm(object):
             self.__scaling(ind,direction='expand')
             del ind.fitness.values
         return population+mutations
-
+    """
+    function " __fit_scaling "
+    Notes: rescaling fitness values using sigmoid function
+    """ 
+    def __fit_scaling(self,fitness):
+        return fitness,0
+#        return  (1/(1 + np.exp(-fitness))),0
+    """
+    function " get_fit_error "
+    Notes: returns mean and min fitness error across all generations
+    """ 
+    def get_fit_error(self):
+        return self.__mean_error, self.__min_error
+    
     """
     function " run "
     Notes: run the GA for a set of given targets and use a given best
     solution of previous generation
     """    
-    def run(self,prev_best = None, true_angles=[np.pi, 2*np.pi]):
-        mean_error = []
-        std = []
-        min_error = []
+    def run(self,true_angles=[np.pi, 2*np.pi],prev_best = None):
+        self.__mean_error = []
+        self.__min_error = []
         top_candidate = []
         
         pop = self.__toolbox.population(n=self.__TOTAL_POP)
+        
         if (prev_best is not None):
             for i in range(len(pop[0])):
                 pop[0][i] = prev_best[i]
+                
+        if len(self.__seed_pop) != 0 and prev_best is not None:
+            pop[:len(self.__seed_pop)] = list(map(self.__toolbox.clone,self.__seed_pop))
+            
         fitnesses = [self.__toolbox.evaluate(ind,true_angles) for ind in pop]
         for ind, fit_value in zip(pop,fitnesses):
-            ind.fitness.values = fit_value
+            ind.fitness.values = self.__fit_scaling(fit_value)
+            
         n_gen = 0
         while n_gen < self.__TOTAL_GENERATIONS:
             n_gen += 1
@@ -189,17 +230,20 @@ class GenticAlgorithm(object):
             #update fitness values for new members
             for ind in offspring:
                 if ind.fitness.valid == False:
-                    ind.fitness.values = self.__toolbox.evaluate(ind,true_angles)
-            
+                   raw_fit = self.__toolbox.evaluate(ind,true_angles)
+                   ind.fitness.values = self.__fit_scaling(raw_fit)
+                               
             pop[:] = offspring
             fits = [ind.fitness.values[0] for ind in pop]
-            mean_error.append(np.mean(fits))
-            std.append(np.std(fits))
+            self.__mean_error.append(np.mean(fits))
+            
             #test best candidate for early exit
             top_candidate = self.__toolbox.select(pop,k=1)[0]
             min_fit = top_candidate.fitness.values[0]
-            min_error.append(min_fit)
+            self.__min_error.append(min_fit)
+            
             if min_fit <= self.__TOLERANCE:
+                self.__seed_pop = self.__toolbox.select(pop,k=self.__BEST)
                 break
             
         return top_candidate

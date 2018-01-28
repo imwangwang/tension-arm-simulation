@@ -225,6 +225,8 @@ def init_model(lengths=None, limits=None):
     """
     a = cylinder(pos=vector(0,0,0),axis=vector(0,1,0),length=lengths[0],radius=0.5,color=color.white)
     a1_joint = sphere(pos=vector(0,0,0),radius=0.7,color=color.cyan)  
+    a.visible = False
+    a1_joint.visible = False
     pos=[a.axis]
     seg = []
     arm = []
@@ -399,6 +401,7 @@ def ga_sim(save_file='plot_data.csv'):
     ten_mod = TensionModulator(R,TOTAL_ITER)
     target_gen = TargetGenerator(model,'circle')
     
+    mean_fit_error, min_fit_error = [],[]
     #Data to be saved and plotted
     new_data = []
     
@@ -418,7 +421,7 @@ def ga_sim(save_file='plot_data.csv'):
         target_angles = analytic_soln(model,target.pos.x,target.pos.y)
         
         start_time = datetime.datetime.now()
-        tension = ga_model.run(tension,target_angles)
+        tension = ga_model.run(target_angles,tension)
         stop_time = datetime.datetime.now()
         
         pred_angles = tension_to_angles(tension,R)
@@ -429,7 +432,7 @@ def ga_sim(save_file='plot_data.csv'):
         
         time_diff = (stop_time - start_time).total_seconds()
         error = mag(model['reach']-target.pos)
-        print('target {} prediction {}'.format(target_angles,pred_angles))
+#        print('target {} prediction {}'.format(target_angles,pred_angles))
         print('Iteration {} Time taken = {} Error = {} '.format(i,time_diff,error))
         
         new_data =[i]+[target.pos.x,target.pos.y]+[model['reach'].x,model['reach'].y]
@@ -438,9 +441,23 @@ def ga_sim(save_file='plot_data.csv'):
         R_mod = R.ravel()
         new_data += R_mod.tolist()
         
+        curr_mean_fit_error, curr_min_fit_error = ga_model.get_fit_error()
+        if(i == 0):
+            mean_fit_error, min_fit_error = curr_mean_fit_error, curr_min_fit_error
+            
         data.update_dataset(new_data)
         i+=1
         
+    fig = plt.figure()
+    fig.suptitle('Fitness error')
+    plt.xlabel('Generation')
+    plt.ylabel('Error in fitness')
+    x = [i for i in range(len(mean_fit_error))]
+    plt.plot(x,mean_fit_error,'.',label='Mean fitness error')
+    plt.plot(x,min_fit_error,'.',label='Min fitness error')
+    plt.legend()
+    plt.savefig('Fitness.pdf',format='pdf')
+    plt.show()
     
     data.save_dataset()
 
@@ -484,6 +501,7 @@ def load_plot(filename = 'plot_data.csv',stats=False):
         R_values = dataset[R_cols].values
     if stats == True:
         print(dataset.describe())
+        print(dataset[time_cols].sum())
         
     plot_data = {'target_positions':target_positions, 'pred_positions':pred_positions,
                  'target_angles':target_angles,'pred_angles':pred_angles,
@@ -519,6 +537,7 @@ def graphing(plot_data):
         plt.plot(x1,y1,label='Target positions')
         plt.plot(x2,y2,label='Predition positions')
         plt.legend()
+        plt.savefig('Position.pdf',format='pdf')
     #target and predicted angles for limb plotting
     if target_angles is not None and pred_angles is not None:
         target_angles = np.array(target_angles)
@@ -534,6 +553,7 @@ def graphing(plot_data):
         plt.plot(x1,y1,label='Target angles')
         plt.plot(x2,y2,label='Predition angles')
         plt.legend()
+        plt.savefig('Angle.pdf',format='pdf')
     #excursion values plottting
     if excursion is not None:
         excursion = np.array(excursion)
@@ -547,28 +567,33 @@ def graphing(plot_data):
         y = excursion[:,1]
         z = excursion[:,2]
         ax.plot(x,y,z)
+        ax.view_init(elev=44, azim=-20)
+        plt.savefig('Excursion.pdf',format='pdf')
     #Time taken per iteration plotting
     if time_taken is not None:
         time_taken = np.array(time_taken)
         fig = plt.figure(4)
-        fig.suptitle('Time taken per iteration')
-        plt.xlabel('Iteration')
-        plt.ylabel('Time taken')
+        fig.suptitle('Time taken Distribution')
+        plt.xlabel('Time taken')
+        plt.ylabel('Frequency')
         x = [i for i in range(time_taken.shape[0])]
         y = time_taken
-        plt.plot(x,y)
+        plt.hist(y,bins=10,color='green',rwidth=0.8)
+        plt.savefig('Time_hist.pdf',format='pdf')
     #R values plotting
     if R_values is not None:
-        R_values = np.array(R_values)
+        R_values = np.array(-R_values)
         fig = plt.figure(5)
         fig.suptitle('R values')
         plt.xlabel('Iteration')
         plt.ylabel('R')
         x = [i for i in range(R_values.shape[0])]
-        for i in range(4):
-            y = R_values[:,i]
-            plt.plot(x,y,label='R_{}'.format(i))
- 
+        y1 = R_values[:,0]
+        y2 = R_values[:,3]
+        plt.plot(x,y1,label='R_{}'.format(0))
+        plt.plot(x,y2,label='R_{}'.format(3))
+        plt.legend()
+        plt.savefig('R_values.pdf',format='pdf')
     plt.show()
 
 """
@@ -577,10 +602,10 @@ comment rest and use one function at a time.
 or use all depending on use case
 """
 def main():
-#    ga_sim(save_file = 'plot_data6.csv')
-#    plot_data = load_plot(filename = 'plot_data5.csv')
-#    graphing(plot_data)
-    vis(filename = 'plot_data5.csv')
+    ga_sim(save_file = 'plot_data.csv')
+    plot_data = load_plot(filename = 'plot_data.csv',stats=True)
+    graphing(plot_data)
+    vis(filename = 'plot_data.csv')
     pass
     
 if __name__ == '__main__':
