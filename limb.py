@@ -392,7 +392,7 @@ def ga_sim(save_file='plot_data.csv'):
     #set total iterations for limb motion
     #set R matrix and intitalize into GA
     TOTAL_ITER = 360
-    R = np.array([[-2,0],[0,-1.5]])
+    R = np.linalg.inv(np.array([[-2,0],[0,-1.5]]))
     ga_model = GenticAlgorithm()
     ga_model.set_R(R)
     tension = ga_model.constrained_individual()
@@ -421,7 +421,7 @@ def ga_sim(save_file='plot_data.csv'):
         target_angles = analytic_soln(model,target.pos.x,target.pos.y)
         
         start_time = datetime.datetime.now()
-        tension = ga_model.run(target_angles,tension)
+        tension = ga_model.run(target_angles,None)
         stop_time = datetime.datetime.now()
         
         pred_angles = tension_to_angles(tension,R)
@@ -573,17 +573,23 @@ def graphing(plot_data):
     if time_taken is not None:
         time_taken = np.array(time_taken)
         fig = plt.figure(4)
-        fig.suptitle('Time taken Distribution')
-        plt.xlabel('Time taken')
-        plt.ylabel('Frequency')
+        fig.suptitle('Time taken per Iteration')
+        plt.xlabel('Iteration')
+        plt.ylabel('Time Taken')
         x = [i for i in range(time_taken.shape[0])]
         y = time_taken
+        plt.scatter(x,y)
+        plt.savefig('Time_dist.pdf',format='pdf')
+        fig = plt.figure(5)
+        fig.suptitle('Time taken Distribution')
+        plt.xlabel('Time Taken')
+        plt.ylabel('Frequency')
         plt.hist(y,bins=10,color='green',rwidth=0.8)
         plt.savefig('Time_hist.pdf',format='pdf')
     #R values plotting
     if R_values is not None:
         R_values = np.array(-R_values)
-        fig = plt.figure(5)
+        fig = plt.figure(6)
         fig.suptitle('R values')
         plt.xlabel('Iteration')
         plt.ylabel('R')
@@ -602,10 +608,10 @@ comment rest and use one function at a time.
 or use all depending on use case
 """
 def main():
-    ga_sim(save_file = 'plot_data.csv')
-    plot_data = load_plot(filename = 'plot_data.csv',stats=True)
-    graphing(plot_data)
-    vis(filename = 'plot_data.csv')
+#    ga_sim(save_file = 'plot_data_3.csv')
+    plot_data = load_plot(filename = 'plot_data_2.csv',stats=True)
+#    graphing(plot_data)
+#    vis(filename = 'plot_data.csv')
     pass
     
 if __name__ == '__main__':

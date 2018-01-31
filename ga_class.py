@@ -34,13 +34,13 @@ class GenticAlgorithm(object):
         # error tolerance value
         self.__TOLERANCE = self.__fit_scaling(0.5)[0]
         # LOWER bound values
-        self.__LOW = [-40,-100]
+        self.__LOW = [-200,-300]
         # Upper bound values
-        self.__HIGH = [0,0]
+        self.__HIGH = [0,-100]
         # total number of generations allowed to find solution
         self.__TOTAL_GENERATIONS = 5000
         #default R matrix
-        self.__R = np.array([[-2,0],[0,-1.5]])
+        self.__R = np.linalg.inv(np.array([[-2,0],[0,-1.5]]))
         
         self.__mean_error = []
         self.__min_error = []
