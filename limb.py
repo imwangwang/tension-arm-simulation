@@ -336,9 +336,10 @@ iteration cycle. Currently adds a factor of the current value in a sinusoidal
 fashion
 """ 
 class TensionModulator(object):
-    def __init__(self,R,iterations):
+    def __init__(self,R_inv,iterations):
         self.__R_angles = np.linspace(0,2*np.pi,iterations) 
         self.__mul_factor = 0.1
+        R = np.linalg.inv(R_inv)
         self.__R0 = R[0,0]
         self.__R1 = R[0,1]
         self.__R2 = R[1,0]
@@ -346,12 +347,14 @@ class TensionModulator(object):
         self.__R4 = 3
         self.__R5 = 4
         
-    def modulate_R(self,R,i):
+    def modulate_R(self,R_inv,i):
+        R = np.linalg.inv(R_inv)
         R[0,0] = self.__R0*(1 + (self.__mul_factor*np.sin(self.__R_angles[i])))
         R[0,1] = self.__R1*(1 + (self.__mul_factor*np.sin(self.__R_angles[i])))
         R[1,0] = self.__R2*(1 + (self.__mul_factor*np.cos(self.__R_angles[i])))
         R[1,1] = self.__R3*(1 + (self.__mul_factor*np.cos(self.__R_angles[i])))
-        return R
+        R_inv = np.linalg.inv(R)
+        return R_inv
     
     """
     Currently unused but useful for s3 based coffeicent
@@ -413,7 +416,6 @@ def ga_sim(save_file='plot_data.csv'):
     
     i=0    
     while(i < TOTAL_ITER):
-        
         R = ten_mod.modulate_R(R,i)
         ga_model.set_R(R)
         
@@ -421,7 +423,7 @@ def ga_sim(save_file='plot_data.csv'):
         target_angles = analytic_soln(model,target.pos.x,target.pos.y)
         
         start_time = datetime.datetime.now()
-        tension = ga_model.run(target_angles,None)
+        tension = ga_model.run(target_angles,tension)
         stop_time = datetime.datetime.now()
         
         pred_angles = tension_to_angles(tension,R)
@@ -438,7 +440,9 @@ def ga_sim(save_file='plot_data.csv'):
         new_data =[i]+[target.pos.x,target.pos.y]+[model['reach'].x,model['reach'].y]
         new_data += target_angles+pred_angles
         new_data += tension+s3+[time_diff]
+        R = np.linalg.inv(R)
         R_mod = R.ravel()
+        R = np.linalg.inv(R)
         new_data += R_mod.tolist()
         
         curr_mean_fit_error, curr_min_fit_error = ga_model.get_fit_error()
@@ -596,8 +600,8 @@ def graphing(plot_data):
         x = [i for i in range(R_values.shape[0])]
         y1 = R_values[:,0]
         y2 = R_values[:,3]
-        plt.plot(x,y1,label='R_{}'.format(0))
-        plt.plot(x,y2,label='R_{}'.format(3))
+        plt.plot(x,y1,label='R_00')
+        plt.plot(x,y2,label='R_11')
         plt.legend()
         plt.savefig('R_values.pdf',format='pdf')
     plt.show()
@@ -608,8 +612,8 @@ comment rest and use one function at a time.
 or use all depending on use case
 """
 def main():
-#    ga_sim(save_file = 'plot_data_3.csv')
-    plot_data = load_plot(filename = 'plot_data_2.csv',stats=True)
+#    ga_sim(save_file = 'plot_data_4.csv')
+    plot_data = load_plot(filename = 'plot_data_3.csv',stats=True)
 #    graphing(plot_data)
 #    vis(filename = 'plot_data.csv')
     pass
